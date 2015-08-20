@@ -1,6 +1,12 @@
 #Sprint Release Configurator
 
+An app to associate values from a field on PIs to Release Names via
+preferences.
+
 ## Development Notes
+
+* Has overrides for the gear menu on a grid with a custom store
+* Has a custom dialog for picking field values
 
 ### First Load
 

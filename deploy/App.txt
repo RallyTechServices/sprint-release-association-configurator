@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sprint Release Configurator</title>
+    <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Thu Aug 20 2015 16:16:46 GMT-0700 (PDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Thu Aug 20 2015 16:16:46 GMT-0700 (PDT)";
+        var CHECKSUM = 11171797526;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Rally.ui.dialog.Dialog',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+    title: "Build Information",
+    
+    defaults: { padding: 5, margin: 5 },
+
+    closable: true,
+     
+    draggable: true,
+
+    autoShow: true,
+   
+    width: 350, 
+    
+    initComponent: function() {
+        var id = Ext.id(this);
+        this.title =  "<span class='icon-help'> </span>" + this.title;
+        this.callParent(arguments);
+    },
+    
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    
+    _checkChecksum: function(container) {
+        var deferred = Ext.create('Deft.Deferred');
+        console.log("_checkChecksum", container);
+        var me = this;
+        
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        deferred.resolve(false);
+                        return;
+                    }
+                }
+                deferred.resolve(true);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    afterRender: function() {
+        var app = Rally.getApp();
+        
+        if (! app.isExternal() ) {
+                
+            this._checkChecksum(app).then({
+                scope: this,
+                success: function(result){
+                    if ( !result ) {
+                        this.addDocked({
+                            xtype:'container',
+                            cls: 'build-info',
+                            padding: 2,
+                            html:'<span class="icon-warning"> </span>Checksums do not match'
+                        });
+                    }
+                },
+                failure: function(msg){
+                    console.log("oops:",msg);
+                }
+            });
+        } else {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                html:'... Running externally'
+            });
+        }
+        this.callParent(arguments);
+    },
+    
+    beforeRender: function() {
+        var me = this;
+        this.callParent(arguments);
+
+        if (this.informationHtml) {
+            this.addDocked({
+                xtype: 'component',
+                componentCls: 'intro-panel',
+                padding: 2,
+                html: this.informationHtml
+            });
+        }
+        
+        this.addDocked({
+            xtype:'container',
+            cls: 'build-info',
+            padding: 2,
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('Rally.technicalservices.FieldValueDialog', {
+    extend: 'Rally.ui.dialog.Dialog',
+    alias: 'widget.tsfieldvaluedialog',
+    height: 300,
+    width: 300,
+    layout: 'fit',
+    closable: true,
+    draggable: true,
+    
+    config: {
+        /**
+         * @cfg {String}
+         * Title to give to the dialog
+         */
+        title: 'Choose a Value',
+        /**
+         * @cfg {Array} (required)
+         * Artifact with field
+         */
+        artifactType: 'PortfolioItem',
+        /**
+         * @cfg {Array} (required)
+         * Field on Artifact to pick
+         */
+        artifactField: 'State',
+        
+        /**
+         * @cfg {Boolean}
+         * Allow multiple selection or not
+         */
+        multiple: true,
+
+        /**
+         * @cfg {Ext.grid.Column}
+         * List of columns that will be used in the chooser
+         */
+        columns: [
+            'Name'
+        ],
+
+        /**
+         * @cfg {String}
+         * Text to be displayed on the button when selection is complete
+         */
+        selectionButtonText: 'Done',
+
+        /**
+         * @cfg {Object}
+         * The grid configuration to be used when creative the grid of items in the dialog
+         */
+        gridConfig: {},
+
+        /**
+         * @cfg {Array}
+         * The values to remove from the selection grid
+         */
+        removeValues: undefined
+    },
+
+    selectionCache: [],
+
+    constructor: function(config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+
+    initComponent: function() {
+        this.callParent(arguments);
+
+        this.addEvents(
+            /**
+             * @event valuechosen
+             * Fires when user clicks done after choosing a value
+             * @param {Rally.technicalservices.FieldValueDialog} source the dialog
+             * @param {String} selection selected value or an array of selected values if multiple is true
+             */
+            'valuechosen'
+        );
+
+        this.addCls(['chooserDialog', 'chooser-dialog']);
+    },
+
+    beforeRender: function() {
+        this.callParent(arguments);
+
+        this.addDocked({
+            xtype: 'toolbar',
+            dock: 'bottom',
+            padding: '0 0 10 0',
+            layout: {
+                type: 'hbox',
+                pack: 'center'
+            },
+            ui: 'footer',
+            items: [
+                {
+                    xtype: 'rallybutton',
+                    itemId: 'doneButton',
+                    text: this.selectionButtonText,
+                    cls: 'primary rly-small',
+                    scope: this,
+                    disabled: true,
+                    userAction: 'clicked done in dialog',
+                    handler: function() {
+                        this.fireEvent('valuechosen', this, this.getSelectedRecords());
+                        this.close();
+                    }
+                },
+                {
+                    xtype: 'rallybutton',
+                    text: 'Cancel',
+                    cls: 'secondary rly-small',
+                    handler: this.close,
+                    scope: this,
+                    ui: 'link'
+                }
+            ]
+        });
+
+        if (this.introText) {
+            this.addDocked({
+                xtype: 'component',
+                componentCls: 'intro-panel',
+                html: this.introText
+            });
+        }
+        this.addGrid();
+        
+    },
+    
+    addGrid: function() {
+        var me = this;
+        
+        Rally.data.ModelFactory.getModel({
+            type: me.artifactType,
+            success: function(model) {
+                var store = model.getField(me.artifactField).getAllowedValueStore();
+                store.addFilter({ property:'StringValue',operator:'!=',value:'' });
+                
+                me.buildGrid(store);
+            }
+        });
+    },
+
+    buildGrid: function(store) {
+        if (this.grid) {
+            this.grid.destroy();
+        }
+
+        var me = this;
+        var selectionConfig = {
+            mode: this.multiple ? 'SIMPLE' : 'SINGLE',
+            allowDeselect: true
+        };
+        this.grid = Ext.create('Rally.ui.grid.Grid', Ext.Object.merge({
+            autoAddAllModelFieldsAsColumns: false,
+            columnCfgs: [{dataIndex:'StringValue', text: 'Values'}],
+            enableEditing: false,
+            enableColumnHide: false,
+            enableColumnMove: false,
+            selModel: Ext.create('Rally.ui.selection.CheckboxModel', Ext.apply(selectionConfig, {
+                enableKeyNav: false,
+                isRowSelectable: function (record) {
+                    return true;
+                }
+            })),
+            showRowActionsColumn: false,
+            store: store,
+            viewConfig: {
+                emptyText: Rally.ui.EmptyTextFactory.get('defaultText'),
+                publishLoadMessages: false
+            }
+        }, this.config.gridConfig));
+        
+        this.mon(this.grid, {
+            beforeselect: this._onGridSelect,
+            beforedeselect: this._onGridDeselect,
+            load: this._onGridLoad,
+            scope: this
+        });
+        
+        this.add(this.grid);
+    },
+    
+    _onGridLoad: function() {
+        this.selectionCache = [];
+    },
+    /**
+     * Get the records currently selected in the dialog
+     * {Rally.data.Model}|{Rally.data.Model[]}
+     */
+    getSelectedRecords: function() {
+        return this.multiple ? this.selectionCache : this.selectionCache[0];
+    },
+    
+    _enableDoneButton: function() {
+        this.down('#doneButton').setDisabled(this.selectionCache.length ? false : true);
+    },
+
+    _findRecordInSelectionCache: function(record){
+        return _.findIndex(this.selectionCache, function(cachedRecord) {
+            return cachedRecord.get('StringValue') === record.get('StringValue');
+        });
+    },
+
+    _onGridSelect: function(selectionModel, record) {
+        var index = this._findRecordInSelectionCache(record);
+        if (index === -1) {
+            if (!this.multiple) {
+                this.selectionCache = [];
+            }
+            this.selectionCache.push(record);
+        }
+
+        this._enableDoneButton();
+    },
+
+    _onGridDeselect: function(selectionModel, record) {
+        var index = this._findRecordInSelectionCache(record);
+        if (index !== -1) {
+            this.selectionCache.splice(index, 1);
+        }
+
+        this._enableDoneButton();
+    }
+        
+});
+
+Ext.override(Rally.ui.grid.RowActionColumn, {
+    _renderGearIcon: function(value, metaData, record) {
+        return '<div class="row-action-icon icon-gear"/>';
+    },
+
+    /**
+     * @private
+     * @param view
+     * @param el
+     */
+    _showMenu: function(view, el) {
+        var selectedRecord = view.getRecord(Ext.fly(el).parent("tr")),
+            checkedRecords = view.getSelectionModel().getSelection(),
+            grid = view.panel,
+            defaultOptions;
+
+        defaultOptions = {
+            cls: Rally.util.Test.toBrowserTestCssClass('row-gear-menu-' + selectedRecord.getId()) + ' row-gear-menu',
+            view: view,
+            record: selectedRecord,
+            showInlineAdd: grid.enableInlineAdd,
+            owningEl: el.parentElement,
+            popoverPlacement: ['bottom', 'top'],
+            
+            text: 'Remove',
+            
+            onBeforeRecordMenuCopy: function(record) {
+                return grid.onBeforeRecordMenuCopy(record);
+            },
+            onRecordMenuCopy: function(copiedRecord, originalRecord, operation) {
+                return grid.onRecordMenuCopy(copiedRecord, originalRecord, operation);
+            },
+            onBeforeRecordMenuEdit: function(record) {
+                return grid.onBeforeRecordMenuEdit(record);
+            },
+            onBeforeRecordMenuDelete: function(record) {
+                return grid.onBeforeRecordMenuDelete(record);
+            },
+            onRecordMenuDelete: function(record) {
+                return grid.onRecordMenuDelete(record);
+            },
+            onBeforeRecordMenuRankHighest: function(record) {
+                return grid.onBeforeRecordMenuRankHighest(record);
+            },
+            onBeforeRecordMenuRankLowest: function(record) {
+                return grid.onBeforeRecordMenuRankLowest(record);
+            },
+            onRecordMenuRemove: function(record) {
+                return grid.onRecordMenuRemove(record);
+            },
+            shouldRecordBeRankable: function(record) {
+                return grid.shouldRecordBeRankable(record);
+            },
+            
+            handler: function () {
+                // TODO:  Decouple
+                Rally.getApp().removeAssociation(this.record);
+                this.onRecordMenuRemove(this.record);
+            }
+        };
+
+        this.menu = Ext.create('Rally.ui.menu.RecordMenu', Ext.apply({
+            items: [defaultOptions]
+        }, defaultOptions));
+       
+        this.menu.showBy(Ext.fly(el).down(".row-action-icon"));
+    }
+});
+Ext.define("TSSprintReleaseConfigurator", {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    defaults: { margin: 10 },
+    items: [
+        {xtype:'container',itemId:'selector_box', layout: { type:'hbox'} },
+        {xtype:'container',itemId:'display_box'}
+    ],
+    
+    keyPrefix: 'rally.technicalservices.rel-to-sprint',
+    savedValues: [],
+    savedPreference: null,
+    preferenceModel: null,
+    selectedRelease: null,
+    store: null,
+    
+    launch: function() {
+        var me = this;
+        Rally.data.ModelFactory.getModel({
+            type: 'Preference',
+            success: function(model) {
+                me.preferenceModel = model;
+                me._addSelectors(me.down('#selector_box'));
+            }
+        });
+        
+    },
+    
+    _addSelectors: function(container) {
+        container.add({
+            xtype:'rallyreleasecombobox',
+            listeners: {
+                scope: this,
+                change: function(box) {
+                    this._updateData(box.getRecord());
+                }
+            }
+        });
+        
+        container.add({
+            xtype:'rallybutton',
+            text: 'Add TargetSprint(s)',
+            disabled: true,
+            listeners: {
+                scope: this,
+                click: this._launchPicker
+            }
+        });
+    },
+    
+    _updateData: function(release) {
+        this.logger.log("_updateData:", release);
+        var me = this;
+        this.setLoading("Loading...");
+        
+        this.selectedRelease = release;
+        if ( this.store ) { this.store.destroy(); }
+        
+        this.savedValues = [];
+        this.savedPreference = null;
+        
+        this.down('rallybutton') && this.down('rallybutton').setDisabled(true);
+        
+        this._getExistingAssociations(release).then({
+            scope: this,
+            success: function(results) {
+                this.down('rallybutton') && this.down('rallybutton').setDisabled(false);
+
+                this._addTable(results);
+                this.logger.log('Done adding table');
+            },
+            failure: function(msg) {
+                Ext.Msg.alert('',msg);
+            }
+        }).always(function() {
+            me.setLoading(false);
+        });
+    },
+    
+    _getExistingAssociations: function(release) {
+        var deferred = Ext.create('Deft.Deferred');
+        
+        var release_name = release.get('Name');
+        var key = this._getKey();
+        var filters = [{property:'Name', value: key}];
+        var model = "Preference";
+        var fields = ['Name','Value'];
+        
+        this._loadRecordsWithAPromise(model,fields,filters).then({
+            success: function(result) {
+                deferred.resolve(result);
+            },
+            failure: function(msg) {
+                deferred.reject('',msg);
+            }
+        });
+        
+        return deferred.promise;
+    },
+
+    _addTable: function(pref) {
+        var container = this.down('#display_box');
+        container.removeAll();
+        this.logger.log("_addTable:", pref);
+        
+        if ( Ext.isEmpty(pref) ) {
+            container.add({xtype:'container',html:'No Associations Yet.'});
+        } else {
+            this.savedPreference = pref[0];
+
+            this.store = this._updateStore();
+            
+            container.add({
+                xtype:'rallygrid',
+                store: this.store,
+                showPagingToolbar: false,
+                showRowActionsColumn: true,
+                columnCfgs: [{dataIndex:'StringValue', text:'Associated TargetSprints', flex: 1}]
+            });
+        }
+    },
+    
+    _updateStore: function() {
+        var value = this.savedPreference.get('Value');
+        this.logger.log('value:', value);
+        
+        this.savedValues = Ext.JSON.decode(value,true) || value.split(',');
+        
+        this.logger.log(this.savedValues);
+        
+        var data = Ext.Array.map(this.savedValues, function(stringvalue){
+            return { StringValue: stringvalue };
+        });
+        
+        this.logger.log("Making store with data", data);
+        if ( Ext.isEmpty(this.store) ) {
+            this.store = Ext.create('Rally.data.custom.Store',{
+                data: data
+            });
+        } else {
+            this.store.loadData(data);
+        }
+        
+        return this.store;
+    },
+    
+    removeAssociation: function(association_record) {
+        var me = this;
+        
+        this.logger.log('Remove', association_record);
+        var value = association_record.get('StringValue');
+        
+        var values = Ext.Array.filter(this.savedValues,function(saved_value){
+            return ( saved_value != value );
+        });
+        
+        this.savedValues = values;
+        var value = Ext.JSON.encode(values);
+        
+        if ( !Ext.isEmpty(this.savedPreference) ) {
+            // update pref
+            this.logger.log("Updating pref", this.savedPreference.get('Name'));
+            this.savedPreference.set('Value',value);
+            this.savedPreference.save({
+                callback: function(result, operation) {
+                    if(operation.wasSuccessful()) {
+                        me.savedPreference = result;
+                        me._updateStore();
+                    }
+                }
+            });
+        }
+    },
+    
+    _loadRecordsWithAPromise: function(model_name, model_fields,filters){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        this.logger.log("Starting load:",model_name,model_fields);
+        
+        Ext.create('Rally.data.wsapi.Store', {
+            model: model_name,
+            fetch: model_fields,
+            filters: filters
+        }).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    deferred.resolve(records);
+                } else {
+                    me.logger.log("Failed: ", operation);
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
+    },
+    
+    _displayGrid: function(store,field_names){
+        this.down('#display_box').add({
+            xtype: 'rallygrid',
+            store: store,
+            columnCfgs: field_names
+        });
+    },
+    
+    _launchPicker: function() {
+        
+        Ext.create('Rally.technicalservices.FieldValueDialog',{
+            artifactType: 'PortfolioItem',
+            artifactField: 'c_FeatureTargetSprint',
+            listeners: {
+                scope: this,
+                valuechosen: function(dialog,values) {
+                    this.logger.log("Selected Values: ", values);
+                    var string_values = Ext.Array.map(values, function(value) {
+                        return value.get('StringValue');
+                    })
+                    this._addToList(string_values);
+                }
+            }
+        }).show();
+    },
+    
+    _getKey: function() {
+        if ( Ext.isEmpty(this.selectedRelease) ) {
+            return null;
+        }
+        var release_name = this.selectedRelease.get('Name');
+        return this.keyPrefix + "." + release_name;
+    },
+    
+    _addToList: function(values) {
+        var me = this;
+        this.logger.log("_addToList",values);
+        this.logger.log("  Existing List:", this.savedValues);
+        
+        var values = Ext.Array.merge(this.savedValues,values);
+        
+        this.savedValues = values;
+        var value = Ext.JSON.encode(values);
+        
+        if ( !Ext.isEmpty(this.savedPreference) ) {
+            // update pref
+            this.logger.log("Updating pref", this.savedPreference.get('Name'));
+            this.savedPreference.set('Value',value);
+            this.savedPreference.save({
+                callback: function(result, operation) {
+                    if(operation.wasSuccessful()) {
+                        me.savedPreference = result;
+                        me._updateStore();
+                    }
+                }
+            });
+        } else {
+            // create pref
+            var key = this._getKey();
+            
+            this.logger.log("saving ", value, " from (", values, ")");
+            
+            var pref = Ext.create(this.preferenceModel,{
+                Name:  key,
+                Value: values,
+                Workspace: this.getContext().getWorkspace()
+            });
+            
+            pref.save({
+                
+                callback: function(result, operation) {
+                    console.log(result,operation);
+                    if(operation.wasSuccessful()) {
+                        me.savedPreference = result;
+                        me._addTable([result]);
+                    } else {
+                                                
+                        if ( operation.error && operation.error.errors.length > 0 ) {
+                            Ext.Msg.alert('Problem saving association', operation.error.errors.join('<br/>'));
+                        }
+                    }
+                }
+            });
+        }
+    },
+    
+    getOptions: function() {
+        return [
+            {
+                text: 'About...',
+                handler: this._launchInfo,
+                scope: this
+            }
+        ];
+    },
+    
+    _launchInfo: function() {
+        if ( this.about_dialog ) { this.about_dialog.destroy(); }
+        this.about_dialog = Ext.create('Rally.technicalservices.InfoLink',{});
+    },
+    
+    isExternal: function(){
+        return typeof(this.getAppId()) == 'undefined';
+    },
+    
+    //onSettingsUpdate:  Override
+    onSettingsUpdate: function (settings){
+        this.logger.log('onSettingsUpdate',settings);
+        Ext.apply(this, settings);
+        this.launch();
+    }
+});
+
+            
+               Rally.launchApp('TSSprintReleaseConfigurator', {
+                   name: 'Sprint Release Configurator'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
